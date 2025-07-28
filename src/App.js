@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Users, Clock, Upload, UserPlus, BarChart3, Menu, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, Users, Clock, UserPlus, BarChart3, Menu, X } from 'lucide-react';
 
 const FaceAttendanceApp = () => {
   // States
