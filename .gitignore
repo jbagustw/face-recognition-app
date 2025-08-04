@@ -124,3 +124,4 @@ public/models/*.shard*
 
 # Local development
 *.log
+.vercel
