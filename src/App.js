@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import * as faceapi from 'face-api.js';
-import { Camera, Users, Settings, LogOut, Menu, X, CheckCircle, AlertCircle, UserPlus, Clock, Database } from 'lucide-react';
+import { Camera, Users, Menu, X, CheckCircle, AlertCircle, UserPlus, Clock, Database } from 'lucide-react';
 
 function App() {
   const [isModelLoaded, setIsModelLoaded] = useState(false);
@@ -13,15 +13,18 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
   const [detectionConfidence, setDetectionConfidence] = useState(0.6);
+  const [modelLoadingError, setModelLoadingError] = useState(null);
 
   const videoRef = useRef();
   const canvasRef = useRef();
   const streamRef = useRef();
+  const detectionIntervalRef = useRef();
 
   // Load face-api models from CDN
   useEffect(() => {
     const loadModels = async () => {
       try {
+        setModelLoadingError(null);
         const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 
         await Promise.all([
@@ -34,6 +37,7 @@ function App() {
         console.log('Models loaded successfully');
       } catch (error) {
         console.error('Error loading models:', error);
+        setModelLoadingError('Failed to load face recognition models. Please check your internet connection and try again.');
       }
     };
 
@@ -43,7 +47,13 @@ function App() {
   // Start camera
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user'
+        }
+      });
       videoRef.current.srcObject = stream;
       streamRef.current = stream;
       setIsCameraOn(true);
@@ -54,17 +64,42 @@ function App() {
   };
 
   // Stop camera
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setIsCameraOn(false);
-  };
+    setCurrentPerson(null);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopCamera();
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+    };
+  }, [stopCamera]);
 
   // Face detection and recognition
-  const detectFaces = async () => {
-    if (!isModelLoaded || !isCameraOn) {return;}
+  const detectFaces = useCallback(async () => {
+    if (!isModelLoaded || !isCameraOn || !videoRef.current || !canvasRef.current) {
+      return;
+    }
+
+    if (isProcessing) {
+      return;
+    }
+
+    // Check if video is ready
+    if (videoRef.current.readyState !== 4) {
+      return;
+    }
 
     setIsProcessing(true);
     try {
@@ -78,7 +113,8 @@ function App() {
       faceapi.matchDimensions(canvas, displaySize);
 
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
-      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (detections.length > 0) {
         // Draw detections
@@ -119,12 +155,22 @@ function App() {
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [isModelLoaded, isCameraOn, registeredFaces, detectionConfidence, currentMode, isProcessing, markAttendance]);
 
   // Register new face
   const registerFace = async () => {
     if (!newPersonName.trim() || !isCameraOn) {
       alert('Masukkan nama dan pastikan kamera aktif');
+      return;
+    }
+
+    if (!isModelLoaded) {
+      alert('Model pengenalan wajah belum siap. Tunggu sebentar.');
+      return;
+    }
+
+    if (registeredFaces.some(face => face.label === newPersonName.trim())) {
+      alert('Nama sudah terdaftar. Gunakan nama yang berbeda.');
       return;
     }
 
@@ -136,10 +182,10 @@ function App() {
         .withFaceDescriptor();
 
       if (detections) {
-        const newFace = new faceapi.LabeledFaceDescriptors(newPersonName, [detections.descriptor]);
+        const newFace = new faceapi.LabeledFaceDescriptors(newPersonName.trim(), [detections.descriptor]);
         setRegisteredFaces(prev => [...prev, newFace]);
         setNewPersonName('');
-        alert(`Wajah ${newPersonName} berhasil didaftarkan!`);
+        alert(`Wajah ${newPersonName.trim()} berhasil didaftarkan!`);
       } else {
         alert('Tidak ada wajah terdeteksi. Pastikan wajah terlihat jelas di kamera.');
       }
@@ -152,7 +198,7 @@ function App() {
   };
 
   // Mark attendance
-  const markAttendance = (personName) => {
+  const markAttendance = useCallback((personName) => {
     const now = new Date();
     const today = now.toDateString();
     const time = now.toLocaleTimeString();
@@ -170,7 +216,7 @@ function App() {
       };
       setAttendanceLog(prev => [...prev, newAttendance]);
     }
-  };
+  }, [attendanceLog]);
 
   // Clear attendance log
   const clearAttendanceLog = () => {
@@ -183,19 +229,26 @@ function App() {
   const clearRegisteredFaces = () => {
     if (window.confirm('Yakin ingin menghapus semua wajah terdaftar?')) {
       setRegisteredFaces([]);
+      setCurrentPerson(null);
     }
   };
 
   // Start detection loop
   useEffect(() => {
-    let interval;
-    if (isCameraOn && isModelLoaded) {
-      interval = setInterval(detectFaces, 100);
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
     }
+
+    if (isCameraOn && isModelLoaded) {
+      detectionIntervalRef.current = setInterval(detectFaces, 100);
+    }
+
     return () => {
-      if (interval) {clearInterval(interval);}
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
     };
-  }, [isCameraOn, isModelLoaded, registeredFaces, detectionConfidence]);
+  }, [isCameraOn, isModelLoaded, detectFaces]);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -218,6 +271,11 @@ function App() {
               }`}>
                 {isModelLoaded ? 'Model Ready' : 'Loading Model...'}
               </span>
+              {modelLoadingError && (
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                  Model Error
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -312,15 +370,33 @@ function App() {
         {/* Main Content */}
         <div className="flex-1 p-6">
           <div className="max-w-4xl mx-auto">
+            {/* Error Message */}
+            {modelLoadingError && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center space-x-2">
+                  <AlertCircle size={20} className="text-red-500" />
+                  <span className="text-red-700 font-medium">Model Loading Error</span>
+                </div>
+                <p className="text-red-600 mt-2">{modelLoadingError}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-3 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm"
+                >
+                  Reload Page
+                </button>
+              </div>
+            )}
+
             {/* Camera Controls */}
             <div className="mb-6 flex flex-wrap gap-4">
               <button
                 onClick={isCameraOn ? stopCamera : startCamera}
+                disabled={modelLoadingError}
                 className={`px-6 py-3 rounded-lg font-medium transition-colors ${
                   isCameraOn
                     ? 'bg-red-500 hover:bg-red-600 text-white'
                     : 'bg-green-500 hover:bg-green-600 text-white'
-                }`}
+                } ${modelLoadingError ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isCameraOn ? 'Matikan Kamera' : 'Nyalakan Kamera'}
               </button>
@@ -332,11 +408,19 @@ function App() {
                     placeholder="Masukkan nama"
                     value={newPersonName}
                     onChange={(e) => setNewPersonName(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && newPersonName.trim() && !isProcessing && isCameraOn && !modelLoadingError) {
+                        registerFace();
+                      }
+                    }}
+                    disabled={modelLoadingError || !isCameraOn}
+                    className={`px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      modelLoadingError || !isCameraOn ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                   />
                   <button
                     onClick={registerFace}
-                    disabled={isProcessing || !isCameraOn}
+                    disabled={isProcessing || !isCameraOn || modelLoadingError || !newPersonName.trim()}
                     className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50"
                   >
                     {isProcessing ? 'Memproses...' : 'Daftarkan Wajah'}
@@ -370,6 +454,18 @@ function App() {
                   <div className="text-center text-white">
                     <Camera size={48} className="mx-auto mb-4" />
                     <p>Kamera belum aktif</p>
+                    {modelLoadingError && (
+                      <p className="text-red-300 mt-2">Model tidak dapat dimuat</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {isCameraOn && !isModelLoaded && !modelLoadingError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75">
+                  <div className="text-center text-white">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                    <p>Memuat model pengenalan wajah...</p>
                   </div>
                 </div>
               )}
