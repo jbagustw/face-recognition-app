@@ -23,7 +23,7 @@ function App() {
     const loadModels = async () => {
       try {
         const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-        
+
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -64,7 +64,7 @@ function App() {
 
   // Face detection and recognition
   const detectFaces = async () => {
-    if (!isModelLoaded || !isCameraOn) return;
+    if (!isModelLoaded || !isCameraOn) {return;}
 
     setIsProcessing(true);
     try {
@@ -89,10 +89,10 @@ function App() {
         if (registeredFaces.length > 0) {
           const faceMatcher = new faceapi.FaceMatcher(registeredFaces, detectionConfidence);
           const results = detections.map(d => faceMatcher.findBestMatch(d.descriptor));
-          
+
           results.forEach((result, i) => {
             const box = resizedDetections[i].detection.box;
-            const drawBox = new faceapi.draw.DrawBox(box, { 
+            const drawBox = new faceapi.draw.DrawBox(box, {
               label: result.toString(),
               lineWidth: 2
             });
@@ -101,7 +101,7 @@ function App() {
             if (result.distance < detectionConfidence) {
               const personName = result.label;
               setCurrentPerson(personName);
-              
+
               // Auto attendance
               if (currentMode === 'attendance' && personName !== 'unknown') {
                 markAttendance(personName);
@@ -156,8 +156,8 @@ function App() {
     const now = new Date();
     const today = now.toDateString();
     const time = now.toLocaleTimeString();
-    
-    const existingAttendance = attendanceLog.find(log => 
+
+    const existingAttendance = attendanceLog.find(log =>
       log.personName === personName && log.date === today
     );
 
@@ -193,7 +193,7 @@ function App() {
       interval = setInterval(detectFaces, 100);
     }
     return () => {
-      if (interval) clearInterval(interval);
+      if (interval) {clearInterval(interval);}
     };
   }, [isCameraOn, isModelLoaded, registeredFaces, detectionConfidence]);
 
@@ -317,8 +317,8 @@ function App() {
               <button
                 onClick={isCameraOn ? stopCamera : startCamera}
                 className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                  isCameraOn 
-                    ? 'bg-red-500 hover:bg-red-600 text-white' 
+                  isCameraOn
+                    ? 'bg-red-500 hover:bg-red-600 text-white'
                     : 'bg-green-500 hover:bg-green-600 text-white'
                 }`}
               >
@@ -357,7 +357,7 @@ function App() {
                 ref={canvasRef}
                 className="absolute top-0 left-0 w-full h-full"
               />
-              
+
               {currentPerson && (
                 <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
                   <CheckCircle size={20} />

@@ -60,4 +60,4 @@ HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
 
 // Mock video
 HTMLVideoElement.prototype.play = jest.fn();
-HTMLVideoElement.prototype.pause = jest.fn(); 
+HTMLVideoElement.prototype.pause = jest.fn();

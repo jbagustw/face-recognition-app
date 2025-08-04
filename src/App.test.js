@@ -19,9 +19,9 @@ test('renders sidebar navigation', () => {
   const registrationButton = screen.getByText(/Registrasi Wajah/i);
   const attendanceButton = screen.getByText(/Kehadiran/i);
   const databaseButton = screen.getByText(/Database/i);
-  
+
   expect(detectionButton).toBeInTheDocument();
   expect(registrationButton).toBeInTheDocument();
   expect(attendanceButton).toBeInTheDocument();
   expect(databaseButton).toBeInTheDocument();
-}); 
+});
