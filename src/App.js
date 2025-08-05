@@ -86,6 +86,27 @@ function App() {
     };
   }, [stopCamera]);
 
+  // Mark attendance
+  const markAttendance = useCallback((personName) => {
+    const now = new Date();
+    const today = now.toDateString();
+    const time = now.toLocaleTimeString();
+
+    const existingAttendance = attendanceLog.find(log =>
+      log.personName === personName && log.date === today
+    );
+
+    if (!existingAttendance) {
+      const newAttendance = {
+        personName,
+        date: today,
+        time,
+        timestamp: now.getTime()
+      };
+      setAttendanceLog(prev => [...prev, newAttendance]);
+    }
+  }, [attendanceLog]);
+
   // Face detection and recognition
   const detectFaces = useCallback(async () => {
     if (!isModelLoaded || !isCameraOn || !videoRef.current || !canvasRef.current) {
@@ -196,27 +217,6 @@ function App() {
       setIsProcessing(false);
     }
   };
-
-  // Mark attendance
-  const markAttendance = useCallback((personName) => {
-    const now = new Date();
-    const today = now.toDateString();
-    const time = now.toLocaleTimeString();
-
-    const existingAttendance = attendanceLog.find(log =>
-      log.personName === personName && log.date === today
-    );
-
-    if (!existingAttendance) {
-      const newAttendance = {
-        personName,
-        date: today,
-        time,
-        timestamp: now.getTime()
-      };
-      setAttendanceLog(prev => [...prev, newAttendance]);
-    }
-  }, [attendanceLog]);
 
   // Clear attendance log
   const clearAttendanceLog = () => {
