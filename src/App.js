@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as faceapi from 'face-api.js';
 import { Camera, Users, Menu, X, CheckCircle, AlertCircle, UserPlus, Clock, Database } from 'lucide-react';
+import ApiService from './services/api';
 
 function App() {
   const [isModelLoaded, setIsModelLoaded] = useState(false);
@@ -14,11 +15,47 @@ function App() {
   const [newPersonName, setNewPersonName] = useState('');
   const [detectionConfidence, setDetectionConfidence] = useState(0.6);
   const [modelLoadingError, setModelLoadingError] = useState(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [apiError, setApiError] = useState(null);
 
   const videoRef = useRef();
   const canvasRef = useRef();
   const streamRef = useRef();
   const detectionIntervalRef = useRef();
+
+  // Load faces from database
+  const loadFacesFromDatabase = useCallback(async () => {
+    setIsLoadingData(true);
+    setApiError(null);
+    try {
+      const faces = await ApiService.getAllFaces();
+      
+      // Convert database format back to face-api.js format
+      const labeledFaceDescriptors = faces.map(face => {
+        const descriptors = Array.isArray(face.descriptors) ? face.descriptors : [face.descriptors];
+        return new faceapi.LabeledFaceDescriptors(face.label, descriptors);
+      });
+      
+      setRegisteredFaces(labeledFaceDescriptors);
+      console.log(`Loaded ${labeledFaceDescriptors.length} faces from database`);
+    } catch (error) {
+      console.error('Error loading faces from database:', error);
+      setApiError('Failed to load faces from database. Using offline mode.');
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, []);
+
+  // Load attendance from database
+  const loadAttendanceFromDatabase = useCallback(async () => {
+    try {
+      const attendance = await ApiService.getAttendanceLog();
+      setAttendanceLog(attendance);
+      console.log(`Loaded ${attendance.length} attendance records from database`);
+    } catch (error) {
+      console.error('Error loading attendance from database:', error);
+    }
+  }, []);
 
   // Load face-api models from CDN
   useEffect(() => {
@@ -35,6 +72,10 @@ function App() {
         ]);
         setIsModelLoaded(true);
         console.log('Models loaded successfully');
+        
+        // Load data from database after models are loaded
+        await loadFacesFromDatabase();
+        await loadAttendanceFromDatabase();
       } catch (error) {
         console.error('Error loading models:', error);
         setModelLoadingError('Failed to load face recognition models. Please check your internet connection and try again.');
@@ -42,7 +83,7 @@ function App() {
     };
 
     loadModels();
-  }, []);
+  }, [loadFacesFromDatabase, loadAttendanceFromDatabase]);
 
   // Start camera
   const startCamera = async () => {
@@ -87,23 +128,41 @@ function App() {
   }, [stopCamera]);
 
   // Mark attendance
-  const markAttendance = useCallback((personName) => {
+  const markAttendance = useCallback(async (personName) => {
     const now = new Date();
-    const today = now.toDateString();
+    const today = now.toISOString().split('T')[0]; // YYYY-MM-DD format
     const time = now.toLocaleTimeString();
 
     const existingAttendance = attendanceLog.find(log =>
-      log.personName === personName && log.date === today
+      log.personName === personName && log.date === new Date(today).toDateString()
     );
 
     if (!existingAttendance) {
-      const newAttendance = {
-        personName,
-        date: today,
-        time,
-        timestamp: now.getTime()
-      };
-      setAttendanceLog(prev => [...prev, newAttendance]);
+      try {
+        const result = await ApiService.markAttendance(personName, today, time);
+        
+        // Update local state
+        const newAttendance = {
+          id: result.attendance.id,
+          personName: result.attendance.personName,
+          date: result.attendance.date,
+          time: result.attendance.time,
+          timestamp: result.attendance.timestamp
+        };
+        setAttendanceLog(prev => [newAttendance, ...prev]);
+        
+        console.log(`Attendance marked for ${personName}`);
+      } catch (error) {
+        console.error('Error marking attendance:', error);
+        // Fallback to local storage if API fails
+        const newAttendance = {
+          personName,
+          date: new Date(today).toDateString(),
+          time,
+          timestamp: now.getTime()
+        };
+        setAttendanceLog(prev => [...prev, newAttendance]);
+      }
     }
   }, [attendanceLog]);
 
@@ -203,10 +262,23 @@ function App() {
         .withFaceDescriptor();
 
       if (detections) {
-        const newFace = new faceapi.LabeledFaceDescriptors(newPersonName.trim(), [detections.descriptor]);
-        setRegisteredFaces(prev => [...prev, newFace]);
-        setNewPersonName('');
-        alert(`Wajah ${newPersonName.trim()} berhasil didaftarkan!`);
+        try {
+          // Save to database first
+          await ApiService.registerFace(newPersonName.trim(), detections.descriptor);
+          
+          // Update local state
+          const newFace = new faceapi.LabeledFaceDescriptors(newPersonName.trim(), [detections.descriptor]);
+          setRegisteredFaces(prev => [...prev, newFace]);
+          setNewPersonName('');
+          alert(`Wajah ${newPersonName.trim()} berhasil didaftarkan!`);
+        } catch (error) {
+          console.error('Error saving face to database:', error);
+          // Fallback to local storage if API fails
+          const newFace = new faceapi.LabeledFaceDescriptors(newPersonName.trim(), [detections.descriptor]);
+          setRegisteredFaces(prev => [...prev, newFace]);
+          setNewPersonName('');
+          alert(`Wajah ${newPersonName.trim()} berhasil didaftarkan! (Mode offline)`);
+        }
       } else {
         alert('Tidak ada wajah terdeteksi. Pastikan wajah terlihat jelas di kamera.');
       }
@@ -219,17 +291,34 @@ function App() {
   };
 
   // Clear attendance log
-  const clearAttendanceLog = () => {
+  const clearAttendanceLog = async () => {
     if (window.confirm('Yakin ingin menghapus semua log kehadiran?')) {
-      setAttendanceLog([]);
+      try {
+        await ApiService.clearAttendanceLog();
+        setAttendanceLog([]);
+        console.log('Attendance log cleared from database');
+      } catch (error) {
+        console.error('Error clearing attendance log:', error);
+        // Fallback to local clear if API fails
+        setAttendanceLog([]);
+      }
     }
   };
 
   // Clear registered faces
-  const clearRegisteredFaces = () => {
+  const clearRegisteredFaces = async () => {
     if (window.confirm('Yakin ingin menghapus semua wajah terdaftar?')) {
-      setRegisteredFaces([]);
-      setCurrentPerson(null);
+      try {
+        await ApiService.clearAllFaces();
+        setRegisteredFaces([]);
+        setCurrentPerson(null);
+        console.log('All faces cleared from database');
+      } catch (error) {
+        console.error('Error clearing faces:', error);
+        // Fallback to local clear if API fails
+        setRegisteredFaces([]);
+        setCurrentPerson(null);
+      }
     }
   };
 
@@ -265,15 +354,25 @@ function App() {
               </button>
               <h1 className="text-2xl font-bold text-blue-600">Face Recognition System</h1>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                 isModelLoaded ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
               }`}>
                 {isModelLoaded ? 'Model Ready' : 'Loading Model...'}
               </span>
+              {isLoadingData && (
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                  Loading Data...
+                </span>
+              )}
               {modelLoadingError && (
                 <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
                   Model Error
+                </span>
+              )}
+              {apiError && (
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                  Offline Mode
                 </span>
               )}
             </div>

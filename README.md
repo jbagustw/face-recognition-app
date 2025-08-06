@@ -7,15 +7,27 @@ Aplikasi sistem kehadiran berbasis pengenalan wajah yang dibangun dengan React d
 - **Deteksi Wajah Real-time**: Mendeteksi wajah secara real-time menggunakan kamera
 - **Registrasi Wajah**: Mendaftarkan wajah baru ke dalam sistem
 - **Sistem Kehadiran**: Mencatat kehadiran otomatis ketika wajah terdaftar terdeteksi
-- **Database Wajah**: Mengelola database wajah yang telah terdaftar
+- **Database Persisten**: Data wajah tersimpan permanen di database PostgreSQL
+- **API Backend**: RESTful API untuk manajemen data wajah dan kehadiran
+- **Mode Offline**: Tetap berfungsi jika database tidak tersedia
 - **UI Modern**: Interface yang responsif dan mudah digunakan
 
 ## Teknologi yang Digunakan
 
+### Frontend
 - React 18
 - face-api.js untuk pengenalan wajah
 - Tailwind CSS untuk styling
 - Lucide React untuk icons
+
+### Backend
+- Node.js dengan Express.js
+- PostgreSQL untuk database
+- CORS untuk cross-origin requests
+
+### Deployment
+- Vercel untuk hosting full-stack
+- Vercel Postgres untuk database
 
 ## Cara Menjalankan Aplikasi
 
@@ -36,12 +48,24 @@ cd face-recognition-app
 npm install
 ```
 
-3. Jalankan aplikasi
+3. Setup database (opsional untuk development)
+```bash
+# Untuk development lokal, bisa skip step ini
+# Data akan disimpan sementara di memori browser
+```
+
+4. Setup environment variables (untuk production)
+```bash
+cp env.example .env.local
+# Edit .env.local dan isi DATABASE_URL jika menggunakan database
+```
+
+5. Jalankan aplikasi
 ```bash
 npm start
 ```
 
-4. Buka browser dan akses `http://localhost:3000`
+6. Buka browser dan akses `http://localhost:3000`
 
 ## Cara Menggunakan
 
@@ -89,6 +113,27 @@ npm start
 - Wajah harus menghadap kamera dengan jelas
 - Atur confidence threshold sesuai kebutuhan
 
+## Database Setup
+
+### Untuk Production (Vercel)
+1. Buat database PostgreSQL di Vercel:
+   - Masuk ke dashboard Vercel
+   - Pilih project Anda
+   - Go to Storage → Create Database → Postgres
+   - Copy connection string
+
+2. Set environment variables di Vercel:
+   - `DATABASE_URL`: Connection string dari database
+   - `NODE_ENV`: `production`
+
+3. Database akan otomatis membuat tabel yang diperlukan
+
+### Untuk Development Lokal
+Aplikasi akan bekerja tanpa database (mode offline) untuk development.
+Data akan tersimpan sementara di browser.
+
+Lihat [DATABASE_SETUP.md](DATABASE_SETUP.md) untuk panduan lengkap.
+
 ## Deployment
 
 ### Build untuk Production
@@ -102,23 +147,34 @@ npm run build
 npm i -g vercel
 ```
 
-2. Deploy
+2. Setup database terlebih dahulu (lihat Database Setup di atas)
+
+3. Deploy
 ```bash
-vercel
+vercel --prod
 ```
+
+4. Set environment variables di Vercel dashboard jika belum
 
 ## Struktur File
 
 ```
 face-recognition-app/
+├── api/
+│   └── index.js        # Express.js backend API
 ├── public/
 │   ├── index.html
 │   └── manifest.json
 ├── src/
+│   ├── services/
+│   │   └── api.js      # API service untuk frontend
 │   ├── App.js          # Komponen utama aplikasi
 │   ├── index.js        # Entry point
 │   └── index.css       # Global styles
 ├── package.json
+├── vercel.json         # Konfigurasi deployment Vercel
+├── env.example         # Template environment variables
+├── DATABASE_SETUP.md   # Panduan setup database
 ├── tailwind.config.js
 └── README.md
 ```

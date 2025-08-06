@@ -7,9 +7,17 @@
       "config": {
         "distDir": "build"
       }
+    },
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node"
     }
   ],
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
     {
       "source": "/static/(.*)",
       "destination": "/static/$1"
@@ -37,5 +45,15 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/index.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
+  "env": {
+    "REACT_APP_FACE_API_MODELS_URL": "https://justadudewhohacks.github.io/face-api.js/models",
+    "REACT_APP_API_URL": "/api"
+  }
 }
