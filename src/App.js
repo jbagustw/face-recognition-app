@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as faceapi from 'face-api.js';
-import { Camera, Users, Menu, X, CheckCircle, AlertCircle, UserPlus, Clock, Database } from 'lucide-react';
+import { Camera, Users, Menu, X, CheckCircle, AlertCircle, UserPlus, Clock, Database, Upload, Image } from 'lucide-react';
 import ApiService from './services/api';
 
 function App() {
@@ -17,11 +17,16 @@ function App() {
   const [modelLoadingError, setModelLoadingError] = useState(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [apiError, setApiError] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [registrationMethod, setRegistrationMethod] = useState('camera'); // 'camera' or 'upload'
+  const [previewImage, setPreviewImage] = useState(null);
 
   const videoRef = useRef();
   const canvasRef = useRef();
   const streamRef = useRef();
   const detectionIntervalRef = useRef();
+  const fileInputRef = useRef();
+  const uploadedImageRef = useRef();
 
   // Load faces from database
   const loadFacesFromDatabase = useCallback(async () => {
@@ -165,6 +170,107 @@ function App() {
       }
     }
   }, [attendanceLog]);
+
+  // Handle file upload
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setUploadedImage(e.target.result);
+        setPreviewImage(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      alert('Silakan pilih file gambar yang valid (JPG, PNG, etc.)');
+    }
+  };
+
+  // Clear uploaded image
+  const clearUploadedImage = () => {
+    setUploadedImage(null);
+    setPreviewImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Register face from uploaded image
+  const registerFaceFromUpload = async () => {
+    if (!newPersonName.trim()) {
+      alert('Masukkan nama terlebih dahulu');
+      return;
+    }
+
+    if (!uploadedImage) {
+      alert('Pilih foto terlebih dahulu');
+      return;
+    }
+
+    if (!isModelLoaded) {
+      alert('Model pengenalan wajah belum siap. Tunggu sebentar.');
+      return;
+    }
+
+    if (registeredFaces.some(face => face.label === newPersonName.trim())) {
+      alert('Nama sudah terdaftar. Gunakan nama yang berbeda.');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      // Create image element from uploaded file
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const detections = await faceapi
+            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (detections) {
+            try {
+              // Save to database first
+              await ApiService.registerFace(newPersonName.trim(), detections.descriptor);
+              
+              // Update local state
+              const newFace = new faceapi.LabeledFaceDescriptors(newPersonName.trim(), [detections.descriptor]);
+              setRegisteredFaces(prev => [...prev, newFace]);
+              setNewPersonName('');
+              clearUploadedImage();
+              alert(`Wajah ${newPersonName.trim()} berhasil didaftarkan dari foto!`);
+            } catch (error) {
+              console.error('Error saving face to database:', error);
+              // Fallback to local storage if API fails
+              const newFace = new faceapi.LabeledFaceDescriptors(newPersonName.trim(), [detections.descriptor]);
+              setRegisteredFaces(prev => [...prev, newFace]);
+              setNewPersonName('');
+              clearUploadedImage();
+              alert(`Wajah ${newPersonName.trim()} berhasil didaftarkan dari foto! (Mode offline)`);
+            }
+          } else {
+            alert('Tidak ada wajah terdeteksi dalam foto. Pastikan foto menampilkan wajah dengan jelas.');
+          }
+        } catch (error) {
+          console.error('Error processing uploaded image:', error);
+          alert('Gagal memproses foto. Coba dengan foto yang berbeda.');
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+      
+      img.onerror = () => {
+        alert('Gagal memuat gambar. Coba dengan file yang berbeda.');
+        setIsProcessing(false);
+      };
+      
+      img.src = uploadedImage;
+    } catch (error) {
+      console.error('Error in registerFaceFromUpload:', error);
+      alert('Gagal mendaftarkan wajah dari foto. Coba lagi.');
+      setIsProcessing(false);
+    }
+  };
 
   // Face detection and recognition
   const detectFaces = useCallback(async () => {
@@ -501,29 +607,131 @@ function App() {
               </button>
 
               {currentMode === 'registration' && (
-                <div className="flex items-center space-x-4">
-                  <input
-                    type="text"
-                    placeholder="Masukkan nama"
-                    value={newPersonName}
-                    onChange={(e) => setNewPersonName(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' && newPersonName.trim() && !isProcessing && isCameraOn && !modelLoadingError) {
-                        registerFace();
-                      }
-                    }}
-                    disabled={modelLoadingError || !isCameraOn}
-                    className={`px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      modelLoadingError || !isCameraOn ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  />
-                  <button
-                    onClick={registerFace}
-                    disabled={isProcessing || !isCameraOn || modelLoadingError || !newPersonName.trim()}
-                    className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50"
-                  >
-                    {isProcessing ? 'Memproses...' : 'Daftarkan Wajah'}
-                  </button>
+                <div className="space-y-4">
+                  {/* Method Selection */}
+                  <div className="flex items-center space-x-4">
+                    <span className="text-sm font-medium text-gray-700">Pilih Metode:</span>
+                    <div className="flex items-center space-x-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="registrationMethod"
+                          value="camera"
+                          checked={registrationMethod === 'camera'}
+                          onChange={(e) => setRegistrationMethod(e.target.value)}
+                          className="text-blue-500"
+                        />
+                        <Camera size={16} />
+                        <span className="text-sm">Kamera</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="registrationMethod"
+                          value="upload"
+                          checked={registrationMethod === 'upload'}
+                          onChange={(e) => setRegistrationMethod(e.target.value)}
+                          className="text-blue-500"
+                        />
+                        <Upload size={16} />
+                        <span className="text-sm">Upload Foto</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Name Input */}
+                  <div className="flex items-center space-x-4">
+                    <input
+                      type="text"
+                      placeholder="Masukkan nama"
+                      value={newPersonName}
+                      onChange={(e) => setNewPersonName(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && newPersonName.trim() && !isProcessing && !modelLoadingError) {
+                          if (registrationMethod === 'camera' && isCameraOn) {
+                            registerFace();
+                          } else if (registrationMethod === 'upload' && uploadedImage) {
+                            registerFaceFromUpload();
+                          }
+                        }
+                      }}
+                      disabled={modelLoadingError}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    
+                    {registrationMethod === 'camera' ? (
+                      <button
+                        onClick={registerFace}
+                        disabled={isProcessing || !isCameraOn || modelLoadingError || !newPersonName.trim()}
+                        className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                      >
+                        <Camera size={16} />
+                        <span>{isProcessing ? 'Memproses...' : 'Daftarkan Wajah'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={registerFaceFromUpload}
+                        disabled={isProcessing || !uploadedImage || modelLoadingError || !newPersonName.trim()}
+                        className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                      >
+                        <Upload size={16} />
+                        <span>{isProcessing ? 'Memproses...' : 'Daftarkan dari Foto'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* File Upload Section */}
+                  {registrationMethod === 'upload' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center space-x-4">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium flex items-center space-x-2"
+                        >
+                          <Image size={16} />
+                          <span>Pilih Foto</span>
+                        </button>
+                        {uploadedImage && (
+                          <button
+                            onClick={clearUploadedImage}
+                            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium flex items-center space-x-2"
+                          >
+                            <X size={16} />
+                            <span>Hapus Foto</span>
+                          </button>
+                        )}
+                      </div>
+                      
+                      {/* Image Preview */}
+                      {previewImage && (
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                          <p className="text-sm text-gray-600 mb-2">Preview Foto:</p>
+                          <img
+                            ref={uploadedImageRef}
+                            src={previewImage}
+                            alt="Preview"
+                            className="max-w-xs max-h-48 object-contain rounded-lg border"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Instructions */}
+                  <div className="text-sm text-gray-600">
+                    {registrationMethod === 'camera' ? (
+                      <p>💡 Pastikan kamera aktif dan wajah terlihat jelas dalam frame</p>
+                    ) : (
+                      <p>💡 Upload foto dengan wajah yang jelas dan pencahayaan yang baik</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -595,7 +803,7 @@ function App() {
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h2 className="text-xl font-semibold mb-4">Registrasi Wajah Baru</h2>
                 <p className="text-gray-600 mb-4">
-                  Masukkan nama dan klik "Daftarkan Wajah" untuk mendaftarkan wajah baru ke sistem.
+                  Pilih metode registrasi: gunakan kamera real-time atau upload foto. Masukkan nama dan daftarkan wajah baru ke sistem.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {registeredFaces.map((face, index) => (

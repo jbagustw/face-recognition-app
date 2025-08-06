@@ -5,7 +5,10 @@ Aplikasi sistem kehadiran berbasis pengenalan wajah yang dibangun dengan React d
 ## Fitur Utama
 
 - **Deteksi Wajah Real-time**: Mendeteksi wajah secara real-time menggunakan kamera
-- **Registrasi Wajah**: Mendaftarkan wajah baru ke dalam sistem
+- **Registrasi Wajah Fleksibel**: 
+  - Registrasi dengan kamera real-time
+  - Upload foto dari perangkat (JPG, PNG, dll)
+  - Preview foto sebelum registrasi
 - **Sistem Kehadiran**: Mencatat kehadiran otomatis ketika wajah terdaftar terdeteksi
 - **Database Persisten**: Data wajah tersimpan permanen di database PostgreSQL
 - **API Backend**: RESTful API untuk manajemen data wajah dan kehadiran
@@ -76,9 +79,16 @@ npm start
 
 ### 2. Registrasi Wajah Baru
 - Pilih menu "Registrasi Wajah"
+- Pilih metode registrasi:
+  - **Kamera**: Gunakan kamera real-time
+    - Pastikan wajah terlihat jelas di kamera
+    - Klik "Daftarkan Wajah"
+  - **Upload Foto**: Upload foto dari perangkat
+    - Klik "Pilih Foto" dan pilih gambar
+    - Pastikan foto menampilkan wajah dengan jelas
+    - Klik "Daftarkan dari Foto"
 - Masukkan nama orang yang akan didaftarkan
-- Pastikan wajah terlihat jelas di kamera
-- Klik "Daftarkan Wajah" untuk menyimpan
+- Data akan tersimpan di database
 
 ### 3. Sistem Kehadiran
 - Pilih menu "Kehadiran"
@@ -112,6 +122,13 @@ npm start
 - Pastikan pencahayaan cukup
 - Wajah harus menghadap kamera dengan jelas
 - Atur confidence threshold sesuai kebutuhan
+
+### Upload Foto Gagal
+- Pastikan file adalah gambar (JPG, PNG, GIF, etc.)
+- Pastikan foto menampilkan wajah dengan jelas
+- Hindari foto yang terlalu gelap atau blur
+- Gunakan foto dengan resolusi yang baik
+- Pastikan hanya ada satu wajah dalam foto
 
 ## Database Setup
 
